@@ -55,7 +55,7 @@ import time
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Config
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GEMINI_API_KEY:
     raise RuntimeError("No Gemini API key found. Please set GEMINI_API_KEY in your environment.")
 
@@ -74,7 +74,7 @@ QUOTA_KEYWORDS = ["quota", "exceeded", "rate limit", "403", "too many requests"]
 # -------------------- LLM wrapper --------------------
 class LLMWithFallback:
     def __init__(self, api_key=None, models=None, temperature=0):
-        self.api_key = api_key or GEMINI_API_KEY
+        self.api_key = api_key or GOOGLE_API_KEY
         self.models = models or MODEL_HIERARCHY
         self.temperature = temperature
         self.current_llm = None  # placeholder for actual ChatGoogleGenerativeAI instance

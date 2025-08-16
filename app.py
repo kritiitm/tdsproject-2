@@ -55,9 +55,9 @@ import time
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Config
-GEMINI_API_KEY = os.getenv("GOOGLE_API_KEY")
-if not GEMINI_API_KEY:
-    raise RuntimeError("No Gemini API key found. Please set GEMINI_API_KEY in your environment.")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+if not GOOGLE_API_KEY:
+    raise RuntimeError("No Google API key found. Please set GOOGLE_API_KEY in your environment.")
 
 MODEL_HIERARCHY = [
     "gemini-2.5-pro",
@@ -806,10 +806,10 @@ RUN_LONGER_CHECKS = False  # Playwright/duckdb tests run only if true (they can 
 
 # Use existing GEMINI_KEYS / MODEL_HIERARCHY from your app. If not defined, create empty lists.
 try:
-    _GEMINI_KEYS = [GEMINI_API_KEY] if GEMINI_API_KEY else []
+    _GOOGLE_KEYS = [GOOGLE_API_KEY] if GOOGLE_API_KEY else []
     _MODEL_HIERARCHY = MODEL_HIERARCHY
 except NameError:
-    _GEMINI_KEYS = []
+    _GOOGLE_KEYS = []
     _MODEL_HIERARCHY = []
 
 # helper: iso timestamp
@@ -922,10 +922,9 @@ def _network_probe_sync(url, timeout=30):
         return {"ok": False, "error": str(e)}
 
 # ---- LLM key+model light test (sync) ----
-# tries each key for each model with a short per-call timeout (run in threadpool)
-def _test_gemini_key_model(key, model, ping_text="ping"):
+def _test_google_key_model(key, model, ping_text="ping"):
     """
-    Test a Gemini API key by sending a minimal request.
+    Test a Google API key by sending a minimal request.
     Always returns a pure dict with only primitive types.
     """
     try:
@@ -979,45 +978,28 @@ def _test_gemini_key_model(key, model, ping_text="ping"):
         return {"ok": False, "error": str(e_outer)}
 
 # ---- Async wrappers that call the sync checks in threadpool ----
-async def check_network():
-    coros = []
-    for name, url in DIAG_NETWORK_TARGETS.items():
-        coros.append(run_in_thread(_network_probe_sync, url, timeout=30))
-    results = await asyncio.gather(*[asyncio.create_task(c) for c in coros], return_exceptions=True)
-    out = {}
-    for (name, _), res in zip(DIAG_NETWORK_TARGETS.items(), results):
-        if isinstance(res, Exception):
-            out[name] = {"ok": False, "error": str(res)}
-        else:
-            out[name] = res
-    return out
-
 async def check_llm_keys_models():
-    """Try all GEMINI_KEYS on each model (light-touch). Runs in threadpool with per-key timeout."""
-    if not _GEMINI_KEYS:
-        return {"warning": "no GEMINI_KEYS configured"}
+    """Try all GOOGLE_KEYS on each model (light-touch). Runs in threadpool with per-key timeout."""
+    if not _GOOGLE_KEYS:
+        return {"warning": "no GOOGLE_KEYS configured"}
 
     results = []
-    # we will stop early if we find a working combo but still record attempts
     for model in (_MODEL_HIERARCHY or ["gemini-2.5-pro"]):
-        # test keys in parallel for this model
         tasks = []
-        for key in _GEMINI_KEYS:
-            tasks.append(run_in_thread(_test_gemini_key_model, key, model, timeout=DIAG_LLM_KEY_TIMEOUT))
+        for key in _GOOGLE_KEYS:
+            tasks.append(run_in_thread(_test_google_key_model, key, model, timeout=DIAG_LLM_KEY_TIMEOUT))
         completed = await asyncio.gather(*[asyncio.create_task(t) for t in tasks], return_exceptions=True)
         model_summary = {"model": model, "attempts": []}
         any_ok = False
-        for key, res in zip(_GEMINI_KEYS, completed):
+        for key, res in zip(_GOOGLE_KEYS, completed):
             if isinstance(res, Exception):
                 model_summary["attempts"].append({"key_mask": (key[:4] + "..." + key[-4:]) if key else None, "ok": False, "error": str(res)})
             else:
-                # res is dict returned by _test_gemini_key_model
                 model_summary["attempts"].append({"key_mask": (key[:4] + "..." + key[-4:]) if key else None, **res})
                 if res.get("ok"):
                     any_ok = True
         results.append(model_summary)
         if any_ok:
-            # stop once first model has a working key (respecting MODEL_HIERARCHY)
             break
     return {"models_tested": results}
 

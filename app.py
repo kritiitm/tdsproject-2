@@ -55,8 +55,9 @@ import time
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 # Config
-GEMINI_KEYS = [os.getenv(f"gemini_api_{i}") for i in range(1, 11)]
-GEMINI_KEYS = [k for k in GEMINI_KEYS if k]
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    raise RuntimeError("No Gemini API key found. Please set GEMINI_API_KEY in your environment.")
 
 MODEL_HIERARCHY = [
     "gemini-2.5-pro",
@@ -70,39 +71,29 @@ MAX_RETRIES_PER_KEY = 2
 TIMEOUT = 30
 QUOTA_KEYWORDS = ["quota", "exceeded", "rate limit", "403", "too many requests"]
 
-if not GEMINI_KEYS:
-    raise RuntimeError("No Gemini API keys found. Please set them in your environment.")
-
 # -------------------- LLM wrapper --------------------
 class LLMWithFallback:
-    def __init__(self, keys=None, models=None, temperature=0):
-        self.keys = keys or GEMINI_KEYS
+    def __init__(self, api_key=None, models=None, temperature=0):
+        self.api_key = api_key or GEMINI_API_KEY
         self.models = models or MODEL_HIERARCHY
         self.temperature = temperature
-        self.slow_keys_log = defaultdict(list)
-        self.failing_keys_log = defaultdict(int)
         self.current_llm = None  # placeholder for actual ChatGoogleGenerativeAI instance
 
     def _get_llm_instance(self):
         last_error = None
         for model in self.models:
-            for key in self.keys:
-                try:
-                    llm_instance = ChatGoogleGenerativeAI(
-                        model=model,
-                        temperature=self.temperature,
-                        google_api_key=key
-                    )
-                    self.current_llm = llm_instance
-                    return llm_instance
-                except Exception as e:
-                    last_error = e
-                    msg = str(e).lower()
-                    if any(qk in msg for qk in QUOTA_KEYWORDS):
-                        self.slow_keys_log[key].append(model)
-                    self.failing_keys_log[key] += 1
-                    time.sleep(0.5)
-        raise RuntimeError(f"All models/keys failed. Last error: {last_error}")
+            try:
+                llm_instance = ChatGoogleGenerativeAI(
+                    model=model,
+                    temperature=self.temperature,
+                    google_api_key=self.api_key
+                )
+                self.current_llm = llm_instance
+                return llm_instance
+            except Exception as e:
+                last_error = e
+                time.sleep(0.5)
+        raise RuntimeError(f"All models failed. Last error: {last_error}")
 
     # Required by LangChain agent
     def bind_tools(self, tools):
@@ -113,7 +104,6 @@ class LLMWithFallback:
     def invoke(self, prompt):
         llm_instance = self._get_llm_instance()
         return llm_instance.invoke(prompt)
-
 
 LLM_TIMEOUT_SECONDS = int(os.getenv("LLM_TIMEOUT_SECONDS", 240))
 
@@ -816,7 +806,7 @@ RUN_LONGER_CHECKS = False  # Playwright/duckdb tests run only if true (they can 
 
 # Use existing GEMINI_KEYS / MODEL_HIERARCHY from your app. If not defined, create empty lists.
 try:
-    _GEMINI_KEYS = GEMINI_KEYS
+    _GEMINI_KEYS = [GEMINI_API_KEY] if GEMINI_API_KEY else []
     _MODEL_HIERARCHY = MODEL_HIERARCHY
 except NameError:
     _GEMINI_KEYS = []
